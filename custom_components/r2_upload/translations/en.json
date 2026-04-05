@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cloudflare R2 Upload",
+        "description": "Configure your Cloudflare R2 bucket connection.",
+        "data": {
+          "endpoint_url": "Endpoint URL",
+          "access_key_id": "Access Key ID",
+          "secret_access_key": "Secret Access Key",
+          "bucket": "Bucket Name",
+          "public_url_base": "Public URL Base (optional)"
+        },
+        "data_description": {
+          "endpoint_url": "S3-compatible endpoint, e.g. https://<account_id>.r2.cloudflarestorage.com",
+          "access_key_id": "R2 API token access key",
+          "secret_access_key": "R2 API token secret key",
+          "bucket": "Name of the R2 bucket",
+          "public_url_base": "Base URL for public access, e.g. https://prints.example.com"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid credentials. Check your access key and secret.",
+      "cannot_connect": "Cannot connect to the R2 endpoint. Check the URL and network.",
+      "bucket_not_found": "Bucket not found. Check the bucket name.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This bucket is already configured."
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "domain": "r2_upload",
+  "name": "Cloudflare R2 Upload",
+  "codeowners": ["@SteveDrakey"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/SteveDrakey/ha-r2-upload",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/SteveDrakey/ha-r2-upload/issues",
+  "requirements": ["boto3==1.35.0"],
+  "version": "1.0.0"
+}

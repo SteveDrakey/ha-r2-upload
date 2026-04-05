@@ -1,0 +1,73 @@
+put:
+  name: Upload file to R2
+  description: Upload a local file to a Cloudflare R2 bucket.
+  fields:
+    file_path:
+      name: File path
+      description: Absolute path to the local file to upload.
+      required: true
+      example: "/config/www/snapshots/latest.jpg"
+      selector:
+        text:
+    key:
+      name: Object key
+      description: The object key (path) in the R2 bucket.
+      required: true
+      example: "snapshots/printer1/latest.jpg"
+      selector:
+        text:
+    content_type:
+      name: Content type
+      description: MIME type override. Auto-detected from file extension if omitted.
+      required: false
+      example: "image/jpeg"
+      selector:
+        text:
+    metadata:
+      name: Metadata
+      description: Custom metadata key-value pairs (all strings).
+      required: false
+      example: '{"printer": "HD2", "filament": "PLA"}'
+      selector:
+        object:
+    storage_class:
+      name: Storage class
+      description: S3 storage class. Defaults to STANDARD.
+      required: false
+      default: "STANDARD"
+      selector:
+        text:
+
+sign_url:
+  name: Generate presigned URL
+  description: Generate a presigned read URL for an object in R2.
+  fields:
+    key:
+      name: Object key
+      description: The object key in the R2 bucket.
+      required: true
+      example: "snapshots/printer1/latest.jpg"
+      selector:
+        text:
+    expiry:
+      name: Expiry
+      description: URL validity in seconds. Defaults to 3600 (1 hour).
+      required: false
+      default: 3600
+      selector:
+        number:
+          min: 60
+          max: 604800
+          unit_of_measurement: seconds
+
+delete:
+  name: Delete object from R2
+  description: Delete an object from a Cloudflare R2 bucket.
+  fields:
+    key:
+      name: Object key
+      description: The object key to delete from the R2 bucket.
+      required: true
+      example: "snapshots/printer1/old.jpg"
+      selector:
+        text:
