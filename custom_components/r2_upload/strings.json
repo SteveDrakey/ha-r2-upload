@@ -12,11 +12,11 @@
           "public_url_base": "Public URL Base (optional)"
         },
         "data_description": {
-          "endpoint_url": "S3-compatible endpoint, e.g. https://ACCOUNT_ID.r2.cloudflarestorage.com",
+          "endpoint_url": "S3-compatible endpoint for your Cloudflare R2 account",
           "access_key_id": "R2 API token access key",
           "secret_access_key": "R2 API token secret key",
           "bucket": "Name of the R2 bucket",
-          "public_url_base": "Base URL for public access, e.g. https://prints.example.com"
+          "public_url_base": "Base URL for public access to your R2 bucket"
         }
       }
     },
