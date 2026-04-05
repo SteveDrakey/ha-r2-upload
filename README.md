@@ -1,15 +1,32 @@
 # Cloudflare R2 Upload for Home Assistant
 
-A Home Assistant custom integration that uploads files to Cloudflare R2 (S3-compatible storage) and generates presigned read URLs. Designed for uploading camera snapshots (e.g. 3D printer cameras) and serving them via presigned or public URLs.
+A Home Assistant custom integration that uploads files to Cloudflare R2 (S3-compatible storage) and generates presigned read URLs. Built for uploading camera snapshots (e.g. from 3D printer cameras) to R2 so they can be served to external apps or shared via notifications.
+
+## How It Works
+
+This integration exposes three **services** (`put`, `sign_url`, `delete`) that you call from automations or scripts. Since HA services don't return values, results are delivered via **events** that you listen for in separate automations.
+
+The typical flow:
+
+1. **`camera.snapshot`** saves an image to disk
+2. **`r2_upload.put`** uploads that file to your R2 bucket → fires `r2_upload_complete`
+3. **`r2_upload.sign_url`** generates a time-limited URL → fires `r2_upload_signed_url`
+4. A separate automation **listens for the event** and sends a notification with the URL
+
+```
+camera.snapshot → r2_upload.put → r2_upload_complete event
+                  r2_upload.sign_url → r2_upload_signed_url event → notify
+```
 
 ## Features
 
-- Upload files to Cloudflare R2 with custom metadata
+- Upload files to Cloudflare R2 with custom metadata and auto-detected MIME types
 - Generate time-limited presigned URLs for private objects
 - Delete objects from R2
-- Fires events on each operation for use in automations
+- Fires events on each operation for chaining in automations
+- Optional public URL construction when a public URL base is configured
 - Supports multiple buckets via multiple config entries
-- Fully async — all S3 calls run in the executor
+- Fully async — all S3 calls run in the executor to avoid blocking the HA event loop
 
 ## Installation
 
@@ -28,18 +45,23 @@ Copy the `custom_components/r2_upload` directory into your Home Assistant `custo
 
 ## Configuration
 
-Configuration is done entirely through the UI:
+Configuration is done entirely through the UI — no YAML needed.
 
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **Cloudflare R2 Upload**
 3. Enter your R2 credentials:
-   - **Endpoint URL**: Your Cloudflare R2 S3-compatible endpoint (e.g. `https://<account_id>.r2.cloudflarestorage.com`)
-   - **Access Key ID**: R2 API token access key
-   - **Secret Access Key**: R2 API token secret key
-   - **Bucket Name**: Your R2 bucket name
-   - **Public URL Base** (optional): Base URL for public access (e.g. `https://prints.example.com`)
 
-The integration validates your credentials during setup by calling `head_bucket`.
+| Field | Required | Description |
+|---|---|---|
+| **Endpoint URL** | Yes | Your Cloudflare R2 S3-compatible endpoint, e.g. `https://<account_id>.r2.cloudflarestorage.com` |
+| **Access Key ID** | Yes | R2 API token access key |
+| **Secret Access Key** | Yes | R2 API token secret key |
+| **Bucket Name** | Yes | Your R2 bucket name |
+| **Public URL Base** | No | Base URL for public access, e.g. `https://prints.example.com`. When set, upload events include a `public_url` field. |
+
+The integration validates your credentials during setup by calling `head_bucket`. You'll see a clear error if the credentials are wrong, the bucket doesn't exist, or the endpoint is unreachable.
+
+You can add multiple entries for different buckets.
 
 ## Services
 
@@ -49,24 +71,24 @@ Upload a local file to R2.
 
 | Parameter | Required | Description |
 |---|---|---|
-| `file_path` | Yes | Absolute path to the local file |
-| `key` | Yes | Object key/path in the bucket |
-| `content_type` | No | MIME type (auto-detected if omitted) |
-| `metadata` | No | Dict of custom metadata |
+| `file_path` | Yes | Absolute path to the local file (must be in `allowlist_external_dirs`) |
+| `key` | Yes | Object key/path in the bucket, e.g. `snapshots/printer1/latest.jpg` |
+| `content_type` | No | MIME type override. Auto-detected from file extension if omitted. |
+| `metadata` | No | Dict of custom string metadata, e.g. `{"printer": "HD2"}` |
 | `storage_class` | No | Storage class (default: `STANDARD`) |
 
-Fires event: `r2_upload_complete`
+**Event fired:** `r2_upload_complete` with data: `bucket`, `key`, `content_type`, `metadata`, and `public_url` (if configured).
 
 ### `r2_upload.sign_url`
 
-Generate a presigned read URL.
+Generate a presigned read URL for an existing object.
 
 | Parameter | Required | Description |
 |---|---|---|
 | `key` | Yes | Object key in the bucket |
-| `expiry` | No | URL validity in seconds (default: `3600`) |
+| `expiry` | No | URL validity in seconds (default: `3600` = 1 hour) |
 
-Fires event: `r2_upload_signed_url`
+**Event fired:** `r2_upload_signed_url` with data: `key`, `url`, `expiry`.
 
 ### `r2_upload.delete`
 
@@ -76,27 +98,40 @@ Delete an object from R2.
 |---|---|---|
 | `key` | Yes | Object key to delete |
 
-Fires event: `r2_upload_deleted`
+**Event fired:** `r2_upload_deleted` with data: `bucket`, `key`.
+
+## Events
+
+All three services fire events so you can chain results in automations. The key fields:
+
+| Event | Key Fields |
+|---|---|
+| `r2_upload_complete` | `bucket`, `key`, `content_type`, `metadata`, `public_url` |
+| `r2_upload_signed_url` | `key`, `url`, `expiry` |
+| `r2_upload_deleted` | `bucket`, `key` |
+
+Access event data in automations via `{{ trigger.event.data.url }}`, `{{ trigger.event.data.public_url }}`, etc.
 
 ## Example Automations
 
-### Capture 3D printer snapshot, upload to R2, and send notification with presigned URL
+### Full flow: snapshot → upload → presigned URL → notification
+
+This uses two automations. The first takes a snapshot and uploads it. The second listens for the signed URL event and sends a notification.
 
 ```yaml
+# Automation 1: Take snapshot, upload, and request a presigned URL
 automation:
   - alias: "Upload printer snapshot every 5 minutes"
     trigger:
       - platform: time_pattern
         minutes: "/5"
     action:
-      # Take a snapshot from the camera
       - service: camera.snapshot
         target:
           entity_id: camera.printer_cam
         data:
           filename: /config/www/snapshots/printer_latest.jpg
 
-      # Upload to R2
       - service: r2_upload.put
         data:
           file_path: /config/www/snapshots/printer_latest.jpg
@@ -105,16 +140,22 @@ automation:
           metadata:
             source: "printer_cam"
 
-      # Generate a presigned URL
       - service: r2_upload.sign_url
         data:
           key: "snapshots/printer1/latest.jpg"
           expiry: 3600
+```
 
-  - alias: "Notify on signed URL generated"
+```yaml
+# Automation 2: React to the signed URL event
+automation:
+  - alias: "Send printer snapshot notification"
     trigger:
       - platform: event
         event_type: r2_upload_signed_url
+    condition:
+      - condition: template
+        value_template: "{{ trigger.event.data.key == 'snapshots/printer1/latest.jpg' }}"
     action:
       - service: notify.mobile_app
         data:
@@ -124,9 +165,9 @@ automation:
             url: "{{ trigger.event.data.url }}"
 ```
 
-### Upload with public URL
+### Using public URLs instead of presigned URLs
 
-If you configured a `public_url_base`, the `r2_upload_complete` event includes a `public_url` field:
+If you configured a **Public URL Base** (e.g. via a Cloudflare R2 custom domain), you don't need `sign_url` at all — the public URL is included in the upload event:
 
 ```yaml
 automation:
@@ -141,8 +182,19 @@ automation:
           message: "{{ trigger.event.data.public_url }}"
 ```
 
-## Important Notes
+## Allowlisting File Paths
 
-- File paths used with `r2_upload.put` must be in your Home Assistant `allowlist_external_dirs` configuration
-- All S3 operations run in the executor thread pool to avoid blocking the HA event loop
-- The integration uses `boto3` — no additional dependencies needed beyond what's declared in `manifest.json`
+Home Assistant requires that file paths accessed by integrations are explicitly allowed. Add your snapshot directory to `configuration.yaml`:
+
+```yaml
+homeassistant:
+  allowlist_external_dirs:
+    - /config/www/snapshots
+```
+
+## Troubleshooting
+
+- **"Failed to upload to R2"** — Check your credentials, bucket name, and that the R2 API token has write permissions.
+- **"File not found"** — Verify the file path exists and is in `allowlist_external_dirs`.
+- **Events not firing** — Check the HA logs at **Settings → System → Logs** for error details.
+- **Presigned URLs not working** — Ensure your R2 bucket hasn't restricted presigned URL access. The default R2 settings allow them.
