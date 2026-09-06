@@ -33,7 +33,7 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: |
-          pip install pytest pytest-homeassistant-custom-component boto3==1.35.0
+          pip install pytest pytest-homeassistant-custom-component boto3
       - name: Run tests
         run: |
           pytest tests/ -v
